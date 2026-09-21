@@ -1,0 +1,171 @@
+-- Configurações de Cores e Tamanho Padrão
+local Box_Color = Color3.fromRGB(160, 32, 240) -- Roxo padrão
+local Name_Color = Color3.fromRGB(255, 255, 255) -- Branco para os demais jogadores
+local Name_Size = 14
+
+-- Configurações Especiais para o Aliado ("mnrzin_15")
+local ALVO_ESPECIAL = "mnrzin_15"
+local Aliado_Box_Color = Color3.fromRGB(0, 255, 0) -- Verde
+local Aliado_Name_Color = Color3.fromRGB(0, 255, 0) -- Verde
+local Aliado_Name_Size = 16 -- Tamanho médio/maior para destaque
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+-- Controle do estado do ESP (Inicia DESATIVADO)
+_G.ESP_Enabled = false
+
+-- Lógica da Tecla +
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    -- Verifica se a tecla pressionada é o "+" (Plus)
+    if input.KeyCode == Enum.KeyCode.Equals then 
+        _G.ESP_Enabled = not _G.ESP_Enabled
+        
+        -- Se o usuário acabou de ATIVAR, força a criação do ESP para quem já está no jogo
+        if _G.ESP_Enabled then
+            for _, player in ipairs(Players:GetPlayers()) do
+                if player ~= LocalPlayer then
+                    -- Chama uma função auxiliar interna para recriar com segurança
+                    charAddedAction(player)
+                end
+            end
+        end
+    end
+end)
+
+local Active_ESPs = {}
+local CreateESP -- Declaração antecipada
+
+-- Função padrão para quando o personagem nasce ou entra
+function charAddedAction(player)
+    if not _G.ESP_Enabled then return end -- Se não estiver ativado, não atualiza/não cria
+    
+    if Active_ESPs[player] then
+        Active_ESPs[player]() -- Limpa o ESP antigo se houver
+    end
+    CreateESP(player)
+end
+
+-- Função para criar o ESP de um jogador
+CreateESP = function(player)
+    if player == LocalPlayer then return end
+    if Active_ESPs[player] then return end -- Evita duplicados
+
+    local ehAliado = (player.Name == ALVO_ESPECIAL)
+
+    local Box = Drawing.new("Square")
+    Box.Visible = false
+    Box.Color = ehAliado and Aliado_Box_Color or Box_Color 
+    Box.Thickness = 3
+    Box.Filled = false
+
+    local Name = Drawing.new("Text")
+    Name.Visible = false
+    Name.Color = ehAliado and Aliado_Name_Color or Name_Color
+    Name.Size = ehAliado and Aliado_Name_Size or Name_Size
+    Name.Center = true
+    Name.Outline = true
+    Name.OutlineColor = Color3.fromRGB(0, 0, 0)
+
+    local Connection
+    
+    local function CleanUp()
+        Box.Visible = false
+        Name.Visible = false
+        Box:Remove()
+        Name:Remove()
+        if Connection then Connection:Disconnect() end
+        Active_ESPs[player] = nil
+    end
+
+    Connection = RunService.RenderStepped:Connect(function()
+        if not player.Parent then
+            CleanUp()
+            return
+        end
+
+        if not _G.ESP_Enabled then
+            Box.Visible = false
+            Name.Visible = false
+            return
+        end
+
+        local char = player.Character
+        if char and char:FindFirstChild("HumanoidRootPart") and char:FindFirstChild("Humanoid") and char.Humanoid.Health > 0 then
+            local hrp = char.HumanoidRootPart
+            
+            local TopWorld = (hrp.CFrame * CFrame.new(0, 3, 0)).Position
+            local BottomWorld = (hrp.CFrame * CFrame.new(0, -3.5, 0)).Position
+
+            local TopScreen, TopOnScreen = Camera:WorldToViewportPoint(TopWorld)
+            local BottomScreen, BottomOnScreen = Camera:WorldToViewportPoint(BottomWorld)
+
+            if TopOnScreen and BottomOnScreen then
+                local Height = math.abs(TopScreen.Y - BottomScreen.Y)
+                local Width = Height / 2
+
+                Box.Size = Vector2.new(Width, Height)
+                Box.Position = Vector2.new(TopScreen.X - (Width / 2), TopScreen.Y)
+                Box.Visible = true
+
+                if ehAliado then
+                    Name.Text = "Aliado\n" .. player.Name
+                    Name.Position = Vector2.new(TopScreen.X, TopScreen.Y - 30)
+                else
+                    Name.Text = player.Name
+                    Name.Position = Vector2.new(TopScreen.X, TopScreen.Y - 15)
+                end
+                
+                Name.Visible = true
+            else
+                Box.Visible = false
+                Name.Visible = false
+            end
+        else
+            Box.Visible = false
+            Name.Visible = false
+        end
+    end)
+
+    local ResetConnection
+    ResetConnection = player.CharacterAdded:Connect(function()
+        CleanUp()
+        ResetConnection:Disconnect()
+        charAddedAction(player) -- Só vai recriar se o ESP estiver ativado
+    end)
+
+    local LeaveConnection
+    LeaveConnection = Players.PlayerRemoving:Connect(function(leftPlayer)
+        if leftPlayer == player then
+            CleanUp()
+            LeaveConnection:Disconnect()
+        end
+    end)
+
+    Active_ESPs[player] = CleanUp
+end
+
+local function StartESPSystem()
+    -- No início do jogo, como começa desativado, ele cria as conexões de CharacterAdded vazias.
+    -- Elas só vão gerar os desenhos se você apertar a tecla "+".
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            player.CharacterAdded:Connect(function()
+                charAddedAction(player)
+            end)
+        end
+    end
+    
+    Players.PlayerAdded:Connect(function(player)
+        player.CharacterAdded:Connect(function()
+            charAddedAction(player)
+        end)
+        charAddedAction(player)
+    end)
+end
+
+StartESPSystem()
