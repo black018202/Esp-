@@ -1,4 +1,4 @@
-local UserInputService = game:GetService("UserInputService")
+Arrume esse script para mim ele de esp keybird+ do teclado mais não ta funcionado no meu Pc antes eu jogava no mobilador e funcionava fui pro Pc e não ta pegando arrume ele local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
 
