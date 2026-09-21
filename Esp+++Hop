@@ -1,137 +1,171 @@
-Arrume esse script para mim ele de esp keybird+ do teclado mais não ta funcionado no meu Pc antes eu jogava no mobilador e funcionava fui pro Pc e não ta pegando arrume ele local UserInputService = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
-local Players = game:GetService("Players")
+Arrume esse script para mim ele de esp keybird+ do teclado mais não ta funcionado no meu Pc antes eu jogava no mobilador e funcionava fui pro Pc e não ta pegando arrume el -- Configurações de Cores e Tamanho Padrão
+local Box_Color = Color3.fromRGB(160, 32, 240) -- Roxo padrão
+local Name_Color = Color3.fromRGB(255, 255, 255) -- Branco para os demais jogadores
+local Name_Size = 14
 
+-- Configurações Especiais para o Aliado ("mnrzin_15")
+local ALVO_ESPECIAL = "mnrzin_15"
+local Aliado_Box_Color = Color3.fromRGB(0, 255, 0) -- Verde
+local Aliado_Name_Color = Color3.fromRGB(0, 255, 0) -- Verde
+local Aliado_Name_Size = 16 -- Tamanho médio/maior para destaque
+
+local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
-local camlockAtivo = false
-local target = nil
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 
--- Controla a suavidade dinâmica (Alpha do Lerp)
-local suavidadeAtual = 0.05 
+-- Controle do estado do ESP (Inicia DESATIVADO)
+_G.ESP_Enabled = false
 
-workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
-    Camera = workspace.CurrentCamera
-end)
-
--- ==================== CONFIGURAÇÕES ====================
-local SUAVE_MIRA = 0.26        -- Mantido em 0.26 conforme solicitado
-local DISTANCIA_MAXIMA = 500    
-local ANGULO_VISAO = 0.85      -- Ignora quem está muito nas laterais da tela
-local NICK_IGNORADO = "paulinhobry5" 
--- =======================================================
-
-local function getClosestPlayerToCenterOfScreen()
-    local bestTarget = nil
-    local closestDistance = math.huge
-    local camPos = Camera.CFrame.Position
-    local camLook = Camera.CFrame.LookVector
-
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character and player.Name ~= NICK_IGNORADO then
-            local character = player.Character
-            local hrp = character:FindFirstChild("HumanoidRootPart")
-            local head = character:FindFirstChild("Head")
-            local humanoid = character:FindFirstChildOfClass("Humanoid")
-            
-            -- Aceita jogadores vivos (mesmo que estejam sentados)
-            if hrp and head and humanoid and humanoid.Health > 0 then
-                -- FILTRO DE ALTURA: Evita puxar em alvos voando ou muito abaixo
-                local alturaDiff = math.abs(head.Position.Y - camPos.Y)
-                if alturaDiff < 45 then 
-                    
-                    local dist = (hrp.Position - camPos).Magnitude
-                    if dist <= DISTANCIA_MAXIMA then
-                        local direction = (hrp.Position - camPos).Unit
-                        local dot = camLook:Dot(direction)
-                        
-                        if dot > ANGULO_VISAO then
-                            local screenPos, onScreen = Camera:WorldToViewportPoint(head.Position)
-                            if onScreen then
-                                local viewportSize = Camera.ViewportSize
-                                local screenCenter = Vector2.new(viewportSize.X / 2, viewportSize.Y / 2)
-                                local distFromCenter = (Vector2.new(screenPos.X, screenPos.Y) - screenCenter).Magnitude
-                                
-                                if distFromCenter < closestDistance then
-                                    closestDistance = distFromCenter
-                                    bestTarget = player
-                                end
-                            end
-                        end
-                    end
+-- Lógica da Tecla +
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    -- Verifica se a tecla pressionada é o "+" (Plus)
+    if input.KeyCode == Enum.KeyCode.Equals then 
+        _G.ESP_Enabled = not _G.ESP_Enabled
+        
+        -- Se o usuário acabou de ATIVAR, força a criação do ESP para quem já está no jogo
+        if _G.ESP_Enabled then
+            for _, player in ipairs(Players:GetPlayers()) do
+                if player ~= LocalPlayer then
+                    -- Chama uma função auxiliar interna para recriar com segurança
+                    charAddedAction(player)
                 end
             end
         end
     end
-    return bestTarget
-end
+end)
 
-local function isTargetAlive(player)
-    if not player or not player.Character then return false end
-    local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
-    local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+local Active_ESPs = {}
+local CreateESP -- Declaração antecipada
+
+-- Função padrão para quando o personagem nasce ou entra
+function charAddedAction(player)
+    if not _G.ESP_Enabled then return end -- Se não estiver ativado, não atualiza/não cria
     
-    return humanoid and hrp and humanoid.Health > 0
+    if Active_ESPs[player] then
+        Active_ESPs[player]() -- Limpa o ESP antigo se houver
+    end
+    CreateESP(player)
 end
 
--- Loop principal atualizado para a RenderStep da Câmera
-RunService:BindToRenderStep("CamlockLoop", Enum.RenderPriority.Camera.Value + 1, function()
-    if camlockAtivo then
-        -- Se o alvo morreu ou sumiu, reseta e busca outro normalmente
-        if target and not isTargetAlive(target) then
-            target = nil
-            suavidadeAtual = 0.05 
+-- Função para criar o ESP de um jogador
+CreateESP = function(player)
+    if player == LocalPlayer then return end
+    if Active_ESPs[player] then return end -- Evita duplicados
+
+    local ehAliado = (player.Name == ALVO_ESPECIAL)
+
+    local Box = Drawing.new("Square")
+    Box.Visible = false
+    Box.Color = ehAliado and Aliado_Box_Color or Box_Color 
+    Box.Thickness = 3
+    Box.Filled = false
+
+    local Name = Drawing.new("Text")
+    Name.Visible = false
+    Name.Color = ehAliado and Aliado_Name_Color or Name_Color
+    Name.Size = ehAliado and Aliado_Name_Size or Name_Size
+    Name.Center = true
+    Name.Outline = true
+    Name.OutlineColor = Color3.fromRGB(0, 0, 0)
+
+    local Connection
+    
+    local function CleanUp()
+        Box.Visible = false
+        Name.Visible = false
+        Box:Remove()
+        Name:Remove()
+        if Connection then Connection:Disconnect() end
+        Active_ESPs[player] = nil
+    end
+
+    Connection = RunService.RenderStepped:Connect(function()
+        if not player.Parent then
+            CleanUp()
+            return
         end
 
-        -- SE NÃO TEM ALVO: Busca quem estiver olhando
-        if not target then
-            target = getClosestPlayerToCenterOfScreen()
-            if target then
-                suavidadeAtual = 0.05
+        if not _G.ESP_Enabled then
+            Box.Visible = false
+            Name.Visible = false
+            return
+        end
+
+        local char = player.Character
+        if char and char:FindFirstChild("HumanoidRootPart") and char:FindFirstChild("Humanoid") and char.Humanoid.Health > 0 then
+            local hrp = char.HumanoidRootPart
+            
+            local TopWorld = (hrp.CFrame * CFrame.new(0, 3, 0)).Position
+            local BottomWorld = (hrp.CFrame * CFrame.new(0, -3.5, 0)).Position
+
+            local TopScreen, TopOnScreen = Camera:WorldToViewportPoint(TopWorld)
+            local BottomScreen, BottomOnScreen = Camera:WorldToViewportPoint(BottomWorld)
+
+            if TopOnScreen and BottomOnScreen then
+                local Height = math.abs(TopScreen.Y - BottomScreen.Y)
+                local Width = Height / 2
+
+                Box.Size = Vector2.new(Width, Height)
+                Box.Position = Vector2.new(TopScreen.X - (Width / 2), TopScreen.Y)
+                Box.Visible = true
+
+                if ehAliado then
+                    Name.Text = "Aliado\n" .. player.Name
+                    Name.Position = Vector2.new(TopScreen.X, TopScreen.Y - 30)
+                else
+                    Name.Text = player.Name
+                    Name.Position = Vector2.new(TopScreen.X, TopScreen.Y - 15)
+                end
+                
+                Name.Visible = true
+            else
+                Box.Visible = false
+                Name.Visible = false
             end
         else
-            -- SE JÁ TEM ALVO: Ele só vai checar a troca se o alvo atual estiver sentado (Sit)
-            local currentHumanoid = target.Character and target.Character:FindFirstChildOfClass("Humanoid")
-            if currentHumanoid and currentHumanoid.Sit then
-                
-                local potentialTarget = getClosestPlayerToCenterOfScreen()
-                if potentialTarget and potentialTarget ~= target then
-                    local potHumanoid = potentialTarget.Character and potentialTarget.Character:FindFirstChildOfClass("Humanoid")
-                    
-                    -- Exceção: Se o alvo novo NÃO estiver sentado (está em pé), ele troca para o em pé mais próximo!
-                    if potHumanoid and not potHumanoid.Sit then
-                        target = potentialTarget
-                        suavidadeAtual = 0.05
-                    end
-                end
-            end
+            Box.Visible = false
+            Name.Visible = false
         end
+    end)
 
-        -- Aplica o movimento de câmera (Gruda e não sai ao mexer o mouse)
-        if target and target.Character then
-            local head = target.Character:FindFirstChild("Head")
-            if head then
-                local currentCFrame = Camera.CFrame
-                local targetCFrame = CFrame.lookAt(currentCFrame.Position, head.Position)
-                
-                -- Interpolação suave
-                Camera.CFrame = currentCFrame:Lerp(targetCFrame, suavidadeAtual)
-                
-                -- Aproxima gradualmente do limite máximo configurado
-                if suavidadeAtual < SUAVE_MIRA then
-                    suavidadeAtual = suavidadeAtual + 0.005
-                end
-            end
+    local ResetConnection
+    ResetConnection = player.CharacterAdded:Connect(function()
+        CleanUp()
+        ResetConnection:Disconnect()
+        charAddedAction(player) -- Só vai recriar se o ESP estiver ativado
+    end)
+
+    local LeaveConnection
+    LeaveConnection = Players.PlayerRemoving:Connect(function(leftPlayer)
+        if leftPlayer == player then
+            CleanUp()
+            LeaveConnection:Disconnect()
+        end
+    end)
+
+    Active_ESPs[player] = CleanUp
+end
+
+local function StartESPSystem()
+    -- No início do jogo, como começa desativado, ele cria as conexões de CharacterAdded vazias.
+    -- Elas só vão gerar os desenhos se você apertar a tecla "+".
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            player.CharacterAdded:Connect(function()
+                charAddedAction(player)
+            end)
         end
     end
-end)
+    
+    Players.PlayerAdded:Connect(function(player)
+        player.CharacterAdded:Connect(function()
+            charAddedAction(player)
+        end)
+        charAddedAction(player)
+    end)
+end
 
--- Ativação pela tecla F
-UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
-    if not gameProcessedEvent and input.KeyCode == Enum.KeyCode.F then
-        camlockAtivo = not camlockAtivo
-        target = nil 
-        suavidadeAtual = 0.05 -- Começa bem suave ao ligar
-        print(camlockAtivo and "Camlock: ATIVADO" or "Camlock: DESATIVADO")
-    end
-end)
+StartESPSystem()
