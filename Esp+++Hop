@@ -1,171 +1,167 @@
-Arrume esse script para mim ele de esp keybird+ do teclado mais não ta funcionado no meu Pc antes eu jogava no mobilador e funcionava fui pro Pc e não ta pegando arrume el -- Configurações de Cores e Tamanho Padrão
-local Box_Color = Color3.fromRGB(160, 32, 240) -- Roxo padrão
-local Name_Color = Color3.fromRGB(255, 255, 255) -- Branco para os demais jogadores
-local Name_Size = 14
-
--- Configurações Especiais para o Aliado ("mnrzin_15")
-local ALVO_ESPECIAL = "mnrzin_15"
-local Aliado_Box_Color = Color3.fromRGB(0, 255, 0) -- Verde
-local Aliado_Name_Color = Color3.fromRGB(0, 255, 0) -- Verde
-local Aliado_Name_Size = 16 -- Tamanho médio/maior para destaque
-
+-- Serviços necessários
 local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
-local Camera = workspace.CurrentCamera
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
--- Controle do estado do ESP (Inicia DESATIVADO)
-_G.ESP_Enabled = false
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
 
--- Lógica da Tecla +
+-- Configurações
+local espEnabled = true -- Começa ativado
+local TOGGLE_KEY = Enum.KeyCode.Equals -- Tecla '=' / '+'
+
+-- Tabela para armazenar os desenhos (ESP) de cada jogador
+local espCache = {}
+
+-- Função para criar a estrutura visual de um jogador
+local function createESP(player)
+	if player == LocalPlayer then return end
+
+	local espData = {}
+
+	-- Box (Retângulo roxo com borda um pouco mais grossa)
+	local box = Drawing.new("Square")
+	box.Visible = false
+	box.Color = Color3.fromRGB(138, 43, 226) -- Roxo
+	box.Thickness = 2.5
+	box.Filled = false
+	espData.Box = box
+
+	-- Nick em cima (Branco)
+	local nameText = Drawing.new("Text")
+	nameText.Visible = false
+	nameText.Color = Color3.fromRGB(255, 255, 255) -- Branco
+	nameText.Size = 14
+	nameText.Center = true
+	nameText.Outline = true
+	espData.NameText = nameText
+
+	-- Fundo da Barra de Vida (Preto/Cinza escuro)
+	local healthBarBg = Drawing.new("Square")
+	healthBarBg.Visible = false
+	healthBarBg.Color = Color3.fromRGB(0, 0, 0)
+	healthBarBg.Thickness = 1
+	healthBarBg.Filled = true
+	espData.HealthBarBg = healthBarBg
+
+	-- Barra de Vida Dinâmica (Verde/Amarelo/Vermelho)
+	local healthBar = Drawing.new("Square")
+	healthBar.Visible = false
+	healthBar.Thickness = 1
+	healthBar.Filled = true
+	espData.HealthBar = healthBar
+
+	espCache[player] = espData
+end
+
+-- Função para remover o ESP quando o jogador sair
+local function removeESP(player)
+	if espCache[player] then
+		for _, drawing in pairs(espCache[player]) do
+			drawing:Remove()
+		end
+		espCache[player] = nil
+	end
+end
+
+-- Inicializar para jogadores já presentes
+for _, player in ipairs(Players:GetPlayers()) do
+	createESP(player)
+end
+
+Players.PlayerAdded:Connect(createESP)
+Players.PlayerRemoving:Connect(removeESP)
+
+-- Sistema de ativação/desativação pela tecla
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    -- Verifica se a tecla pressionada é o "+" (Plus)
-    if input.KeyCode == Enum.KeyCode.Equals then 
-        _G.ESP_Enabled = not _G.ESP_Enabled
-        
-        -- Se o usuário acabou de ATIVAR, força a criação do ESP para quem já está no jogo
-        if _G.ESP_Enabled then
-            for _, player in ipairs(Players:GetPlayers()) do
-                if player ~= LocalPlayer then
-                    -- Chama uma função auxiliar interna para recriar com segurança
-                    charAddedAction(player)
-                end
-            end
-        end
-    end
+	if not gameProcessed and input.KeyCode == TOGGLE_KEY then
+		espEnabled = not espEnabled
+		if not espEnabled then
+			for _, espData in pairs(espCache) do
+				espData.Box.Visible = false
+				espData.NameText.Visible = false
+				espData.HealthBarBg.Visible = false
+				espData.HealthBar.Visible = false
+			end
+		end
+	end
 end)
 
-local Active_ESPs = {}
-local CreateESP -- Declaração antecipada
+-- Loop principal de renderização do ESP
+RunService.RenderStepped:Connect(function()
+	if not espEnabled then return end
 
--- Função padrão para quando o personagem nasce ou entra
-function charAddedAction(player)
-    if not _G.ESP_Enabled then return end -- Se não estiver ativado, não atualiza/não cria
-    
-    if Active_ESPs[player] then
-        Active_ESPs[player]() -- Limpa o ESP antigo se houver
-    end
-    CreateESP(player)
-end
+	for player, espData in pairs(espCache) do
+		local character = player.Character
+		local humanoidRootPart = character and character:FindFirstChild("HumanoidRootPart")
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		local head = character and character:FindFirstChild("Head")
 
--- Função para criar o ESP de um jogador
-CreateESP = function(player)
-    if player == LocalPlayer then return end
-    if Active_ESPs[player] then return end -- Evita duplicados
+		if character and humanoidRootPart and head and humanoid and humanoid.Health > 0 then
+			local headPos, headOnScreen = Camera:WorldToViewportPoint(head.Position + Vector3.new(0, 0.7, 0))
+			local rootPos, onScreen = Camera:WorldToViewportPoint(humanoidRootPart.Position)
 
-    local ehAliado = (player.Name == ALVO_ESPECIAL)
+			if onScreen or headOnScreen then
+				local legPosition = Camera:WorldToViewportPoint(humanoidRootPart.Position - Vector3.new(0, 3.2, 0))
+				
+				-- Altura e largura com margem ligeiramente maior para o box ficar mais solto/espaçoso
+				local height = math.abs(headPos.Y - legPosition.Y) * 1.15
+				local width = (height / 2) * 1.15
 
-    local Box = Drawing.new("Square")
-    Box.Visible = false
-    Box.Color = ehAliado and Aliado_Box_Color or Box_Color 
-    Box.Thickness = 3
-    Box.Filled = false
+				local boxPosition = Vector2.new(headPos.X - width / 2, headPos.Y)
 
-    local Name = Drawing.new("Text")
-    Name.Visible = false
-    Name.Color = ehAliado and Aliado_Name_Color or Name_Color
-    Name.Size = ehAliado and Aliado_Name_Size or Name_Size
-    Name.Center = true
-    Name.Outline = true
-    Name.OutlineColor = Color3.fromRGB(0, 0, 0)
+				-- Atualizar Box Roxo
+				local box = espData.Box
+				box.Size = Vector2.new(width, height)
+				box.Position = boxPosition
+				box.Visible = true
 
-    local Connection
-    
-    local function CleanUp()
-        Box.Visible = false
-        Name.Visible = false
-        Box:Remove()
-        Name:Remove()
-        if Connection then Connection:Disconnect() end
-        Active_ESPs[player] = nil
-    end
+				-- Atualizar Nick (Em cima)
+				local nameText = espData.NameText
+				nameText.Text = player.Name
+				nameText.Position = Vector2.new(boxPosition.X + (width / 2), boxPosition.Y - 32)
+				nameText.Visible = true
 
-    Connection = RunService.RenderStepped:Connect(function()
-        if not player.Parent then
-            CleanUp()
-            return
-        end
+				-- Configurações da Barra de Vida
+				local barWidth = width
+				local barHeight = 4
+				local barX = boxPosition.X
+				local barY = boxPosition.Y - 10
 
-        if not _G.ESP_Enabled then
-            Box.Visible = false
-            Name.Visible = false
-            return
-        end
+				-- Fundo da barra
+				local healthBarBg = espData.HealthBarBg
+				healthBarBg.Size = Vector2.new(barWidth, barHeight)
+				healthBarBg.Position = Vector2.new(barX, barY)
+				healthBarBg.Visible = true
 
-        local char = player.Character
-        if char and char:FindFirstChild("HumanoidRootPart") and char:FindFirstChild("Humanoid") and char.Humanoid.Health > 0 then
-            local hrp = char.HumanoidRootPart
-            
-            local TopWorld = (hrp.CFrame * CFrame.new(0, 3, 0)).Position
-            local BottomWorld = (hrp.CFrame * CFrame.new(0, -3.5, 0)).Position
+				-- Porcentagem de vida atual
+				local healthPercent = math.clamp(humanoid.Health / humanoid.MaxHealth, 0, 1)
+				local currentBarWidth = barWidth * healthPercent
 
-            local TopScreen, TopOnScreen = Camera:WorldToViewportPoint(TopWorld)
-            local BottomScreen, BottomOnScreen = Camera:WorldToViewportPoint(BottomWorld)
-
-            if TopOnScreen and BottomOnScreen then
-                local Height = math.abs(TopScreen.Y - BottomScreen.Y)
-                local Width = Height / 2
-
-                Box.Size = Vector2.new(Width, Height)
-                Box.Position = Vector2.new(TopScreen.X - (Width / 2), TopScreen.Y)
-                Box.Visible = true
-
-                if ehAliado then
-                    Name.Text = "Aliado\n" .. player.Name
-                    Name.Position = Vector2.new(TopScreen.X, TopScreen.Y - 30)
-                else
-                    Name.Text = player.Name
-                    Name.Position = Vector2.new(TopScreen.X, TopScreen.Y - 15)
-                end
-                
-                Name.Visible = true
-            else
-                Box.Visible = false
-                Name.Visible = false
-            end
-        else
-            Box.Visible = false
-            Name.Visible = false
-        end
-    end)
-
-    local ResetConnection
-    ResetConnection = player.CharacterAdded:Connect(function()
-        CleanUp()
-        ResetConnection:Disconnect()
-        charAddedAction(player) -- Só vai recriar se o ESP estiver ativado
-    end)
-
-    local LeaveConnection
-    LeaveConnection = Players.PlayerRemoving:Connect(function(leftPlayer)
-        if leftPlayer == player then
-            CleanUp()
-            LeaveConnection:Disconnect()
-        end
-    end)
-
-    Active_ESPs[player] = CleanUp
-end
-
-local function StartESPSystem()
-    -- No início do jogo, como começa desativado, ele cria as conexões de CharacterAdded vazias.
-    -- Elas só vão gerar os desenhos se você apertar a tecla "+".
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer then
-            player.CharacterAdded:Connect(function()
-                charAddedAction(player)
-            end)
-        end
-    end
-    
-    Players.PlayerAdded:Connect(function(player)
-        player.CharacterAdded:Connect(function()
-            charAddedAction(player)
-        end)
-        charAddedAction(player)
-    end)
-end
-
-StartESPSystem()
+				-- Definir cor da barra com base na vida (Verde -> Amarelo -> Vermelho)
+				local healthBar = espData.HealthBar
+				healthBar.Size = Vector2.new(currentBarWidth, barHeight - 1)
+				healthBar.Position = Vector2.new(barX, barY)
+				
+				if healthPercent > 0.6 then
+					healthBar.Color = Color3.fromRGB(0, 255, 0) -- Verde
+				elseif healthPercent > 0.3 then
+					healthBar.Color = Color3.fromRGB(255, 255, 0) -- Amarelo
+				else
+					healthBar.Color = Color3.fromRGB(255, 0, 0) -- Vermelho
+				end
+				healthBar.Visible = true
+			else
+				espData.Box.Visible = false
+				espData.NameText.Visible = false
+				espData.HealthBarBg.Visible = false
+				espData.HealthBar.Visible = false
+			end
+		else
+			espData.Box.Visible = false
+			espData.NameText.Visible = false
+			espData.HealthBarBg.Visible = false
+			espData.HealthBar.Visible = false
+		end
+	end
+end)
