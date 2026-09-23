@@ -6,8 +6,8 @@ local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
--- Configurações
-local espEnabled = true -- Começa ativado
+-- Configurações (Começa desativado)
+local espEnabled = false 
 local TOGGLE_KEY = Enum.KeyCode.Equals -- Tecla '=' / '+'
 
 -- Tabela para armazenar os desenhos (ESP) de cada jogador
@@ -92,76 +92,79 @@ RunService.RenderStepped:Connect(function()
 	if not espEnabled then return end
 
 	for player, espData in pairs(espCache) do
-		local character = player.Character
-		local humanoidRootPart = character and character:FindFirstChild("HumanoidRootPart")
-		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-		local head = character and character:FindFirstChild("Head")
+		-- Garante que nunca vai renderizar no próprio jogador
+		if player ~= LocalPlayer then
+			local character = player.Character
+			local humanoidRootPart = character and character:FindFirstChild("HumanoidRootPart")
+			local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+			local head = character and character:FindFirstChild("Head")
 
-		if character and humanoidRootPart and head and humanoid and humanoid.Health > 0 then
-			local headPos, headOnScreen = Camera:WorldToViewportPoint(head.Position + Vector3.new(0, 0.7, 0))
-			local rootPos, onScreen = Camera:WorldToViewportPoint(humanoidRootPart.Position)
+			if character and humanoidRootPart and head and humanoid and humanoid.Health > 0 then
+				local headPos, headOnScreen = Camera:WorldToViewportPoint(head.Position + Vector3.new(0, 0.5, 0))
+				local rootPos, onScreen = Camera:WorldToViewportPoint(humanoidRootPart.Position)
 
-			if onScreen or headOnScreen then
-				local legPosition = Camera:WorldToViewportPoint(humanoidRootPart.Position - Vector3.new(0, 3.2, 0))
-				
-				-- Altura e largura com margem ligeiramente maior para o box ficar mais solto/espaçoso
-				local height = math.abs(headPos.Y - legPosition.Y) * 1.15
-				local width = (height / 2) * 1.15
+				if onScreen or headOnScreen then
+					local legPosition = Camera:WorldToViewportPoint(humanoidRootPart.Position - Vector3.new(0, 3.2, 0))
+					
+					-- Altura e largura com o ajuste de tamanho proporcional
+					local height = math.abs(headPos.Y - legPosition.Y) * 1.15
+					local width = (height / 2) * 1.15
 
-				local boxPosition = Vector2.new(headPos.X - width / 2, headPos.Y)
+					local boxPosition = Vector2.new(headPos.X - width / 2, headPos.Y)
 
-				-- Atualizar Box Roxo
-				local box = espData.Box
-				box.Size = Vector2.new(width, height)
-				box.Position = boxPosition
-				box.Visible = true
+					-- Atualizar Box Roxo
+					local box = espData.Box
+					box.Size = Vector2.new(width, height)
+					box.Position = boxPosition
+					box.Visible = true
 
-				-- Atualizar Nick (Em cima)
-				local nameText = espData.NameText
-				nameText.Text = player.Name
-				nameText.Position = Vector2.new(boxPosition.X + (width / 2), boxPosition.Y - 32)
-				nameText.Visible = true
+					-- Configurações da Barra de Vida (Descolada um pouco para cima da borda do box)
+					local barWidth = width
+					local barHeight = 4
+					local barX = boxPosition.X
+					local barY = boxPosition.Y - 8
 
-				-- Configurações da Barra de Vida
-				local barWidth = width
-				local barHeight = 4
-				local barX = boxPosition.X
-				local barY = boxPosition.Y - 10
+					-- Fundo da barra
+					local healthBarBg = espData.HealthBarBg
+					healthBarBg.Size = Vector2.new(barWidth, barHeight)
+					healthBarBg.Position = Vector2.new(barX, barY)
+					healthBarBg.Visible = true
 
-				-- Fundo da barra
-				local healthBarBg = espData.HealthBarBg
-				healthBarBg.Size = Vector2.new(barWidth, barHeight)
-				healthBarBg.Position = Vector2.new(barX, barY)
-				healthBarBg.Visible = true
+					-- Porcentagem de vida atual
+					local healthPercent = math.clamp(humanoid.Health / humanoid.MaxHealth, 0, 1)
+					local currentBarWidth = barWidth * healthPercent
 
-				-- Porcentagem de vida atual
-				local healthPercent = math.clamp(humanoid.Health / humanoid.MaxHealth, 0, 1)
-				local currentBarWidth = barWidth * healthPercent
+					-- Definir cor da barra com base na vida (Verde -> Amarelo -> Vermelho)
+					local healthBar = espData.HealthBar
+					healthBar.Size = Vector2.new(currentBarWidth, barHeight - 1)
+					healthBar.Position = Vector2.new(barX, barY)
+					
+					if healthPercent > 0.6 then
+						healthBar.Color = Color3.fromRGB(0, 255, 0) -- Verde
+					elseif healthPercent > 0.3 then
+						healthBar.Color = Color3.fromRGB(255, 255, 0) -- Amarelo
+					else
+						healthBar.Color = Color3.fromRGB(255, 0, 0) -- Vermelho
+					end
+					healthBar.Visible = true
 
-				-- Definir cor da barra com base na vida (Verde -> Amarelo -> Vermelho)
-				local healthBar = espData.HealthBar
-				healthBar.Size = Vector2.new(currentBarWidth, barHeight - 1)
-				healthBar.Position = Vector2.new(barX, barY)
-				
-				if healthPercent > 0.6 then
-					healthBar.Color = Color3.fromRGB(0, 255, 0) -- Verde
-				elseif healthPercent > 0.3 then
-					healthBar.Color = Color3.fromRGB(255, 255, 0) -- Amarelo
+					-- Atualizar Nick (Mais para cima, logo acima da barra de vida)
+					local nameText = espData.NameText
+					nameText.Text = player.Name
+					nameText.Position = Vector2.new(boxPosition.X + (width / 2), barY - 18)
+					nameText.Visible = true
 				else
-					healthBar.Color = Color3.fromRGB(255, 0, 0) -- Vermelho
+					espData.Box.Visible = false
+					espData.NameText.Visible = false
+					espData.HealthBarBg.Visible = false
+					espData.HealthBar.Visible = false
 				end
-				healthBar.Visible = true
 			else
 				espData.Box.Visible = false
 				espData.NameText.Visible = false
 				espData.HealthBarBg.Visible = false
 				espData.HealthBar.Visible = false
 			end
-		else
-			espData.Box.Visible = false
-			espData.NameText.Visible = false
-			espData.HealthBarBg.Visible = false
-			espData.HealthBar.Visible = false
 		end
 	end
 end)
