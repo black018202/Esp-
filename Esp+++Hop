@@ -1,3 +1,6 @@
+-- Aguarda 10 segundos para o jogo e o seu personagem carregarem completamente (ideal para Auto Execute)
+task.wait(10)
+
 -- Serviços necessários
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -64,12 +67,19 @@ local function removeESP(player)
 	end
 end
 
--- Inicializar para jogadores já presentes
+-- Inicializar para jogadores já presentes (ignorando a si mesmo)
 for _, player in ipairs(Players:GetPlayers()) do
-	createESP(player)
+	if player ~= LocalPlayer then
+		createESP(player)
+	end
 end
 
-Players.PlayerAdded:Connect(createESP)
+Players.PlayerAdded:Connect(function(player)
+	if player ~= LocalPlayer then
+		createESP(player)
+	end
+end)
+
 Players.PlayerRemoving:Connect(removeESP)
 
 -- Sistema de ativação/desativação pela tecla
@@ -92,7 +102,7 @@ RunService.RenderStepped:Connect(function()
 	if not espEnabled then return end
 
 	for player, espData in pairs(espCache) do
-		-- Garante que nunca vai renderizar no próprio jogador
+		-- Bloqueio absoluto para nunca renderizar no próprio jogador
 		if player ~= LocalPlayer then
 			local character = player.Character
 			local humanoidRootPart = character and character:FindFirstChild("HumanoidRootPart")
@@ -118,7 +128,7 @@ RunService.RenderStepped:Connect(function()
 					box.Position = boxPosition
 					box.Visible = true
 
-					-- Configurações da Barra de Vida (Descolada um pouco para cima da borda do box)
+					-- Configurações da Barra de Vida (Descolada da borda do box)
 					local barWidth = width
 					local barHeight = 4
 					local barX = boxPosition.X
