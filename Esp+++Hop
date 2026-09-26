@@ -1,73 +1,98 @@
--- Aguarda 10 segundos para o jogo e o seu personagem carregarem completamente (ideal para Auto Execute)
-task.wait(10)
+-- Aguarda 3 segundos para o jogo carregar completamente
+task.wait(3)
 
 -- Serviços necessários
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
--- Configurações (Começa desativado)
-local espEnabled = false 
+-- Variável de estado do ESP (Começa desativado)
+local espEnabled = false
 local TOGGLE_KEY = Enum.KeyCode.Equals -- Tecla '=' / '+'
 
--- Tabela para armazenar os desenhos (ESP) de cada jogador
+-- Criar a pasta invisível para guardar os elementos do ESP
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "PureESPSystem"
+pcall(function()
+	ScreenGui.Parent = CoreGui
+end)
+if not ScreenGui.Parent then
+	ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+end
+
+local espFolder = Instance.new("Folder")
+espFolder.Name = "ESPFolder"
+espFolder.Parent = ScreenGui
+
 local espCache = {}
 
--- Função para criar a estrutura visual de um jogador
 local function createESP(player)
 	if player == LocalPlayer then return end
 
-	local espData = {}
+	local billboard = Instance.new("BillboardGui")
+	billboard.Name = player.Name .. "_ESP"
+	billboard.AlwaysOnTop = true
+	billboard.Size = UDim2.new(4, 0, 5.5, 0)
+	billboard.Enabled = false
 
-	-- Box (Retângulo roxo com borda um pouco mais grossa)
-	local box = Drawing.new("Square")
-	box.Visible = false
-	box.Color = Color3.fromRGB(138, 43, 226) -- Roxo
-	box.Thickness = 2.5
-	box.Filled = false
-	espData.Box = box
+	-- Box Roxo (A caixa principal)
+	local box = Instance.new("Frame")
+	box.Name = "Box"
+	box.Size = UDim2.new(1, 0, 0.75, 0)
+	box.Position = UDim2.new(0, 0, 0.25, 0)
+	box.BackgroundTransparency = 1
+	box.Parent = billboard
 
-	-- Nick em cima (Branco)
-	local nameText = Drawing.new("Text")
-	nameText.Visible = false
-	nameText.Color = Color3.fromRGB(255, 255, 255) -- Branco
-	nameText.Size = 14
-	nameText.Center = true
-	nameText.Outline = true
-	espData.NameText = nameText
+	local boxStroke = Instance.new("UIStroke")
+	boxStroke.Color = Color3.fromRGB(138, 43, 226) -- Roxo
+	boxStroke.Thickness = 2
+	boxStroke.Parent = box
 
-	-- Fundo da Barra de Vida (Preto/Cinza escuro)
-	local healthBarBg = Drawing.new("Square")
-	healthBarBg.Visible = false
-	healthBarBg.Color = Color3.fromRGB(0, 0, 0)
-	healthBarBg.Thickness = 1
-	healthBarBg.Filled = true
-	espData.HealthBarBg = healthBarBg
+	-- Nick Name (Em cima da caixa e da barra)
+	local nameLabel = Instance.new("TextLabel")
+	nameLabel.Name = "NameLabel"
+	nameLabel.Size = UDim2.new(1, 0, 0, 18)
+	nameLabel.Position = UDim2.new(0, 0, 0, -4)
+	nameLabel.BackgroundTransparency = 1
+	nameLabel.Font = Enum.Font.GothamBold
+	nameLabel.Text = player.Name
+	nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+	nameLabel.TextSize = 13
+	nameLabel.TextStrokeTransparency = 0
+	nameLabel.Parent = billboard
 
-	-- Barra de Vida Dinâmica (Verde/Amarelo/Vermelho)
-	local healthBar = Drawing.new("Square")
-	healthBar.Visible = false
-	healthBar.Thickness = 1
-	healthBar.Filled = true
-	espData.HealthBar = healthBar
+	-- Fundo da Barra de Vida (Posicionado no topo da caixa roxa)
+	local healthBg = Instance.new("Frame")
+	healthBg.Name = "HealthBg"
+	healthBg.Size = UDim2.new(1, 0, 0, 5)
+	healthBg.Position = UDim2.new(0, 0, 0, 18)
+	healthBg.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+	healthBg.BorderSizePixel = 0
+	healthBg.Parent = billboard
 
-	espCache[player] = espData
+	-- Barra de Vida Dinâmica (Dentro do fundo)
+	local healthBar = Instance.new("Frame")
+	healthBar.Name = "HealthBar"
+	healthBar.Size = UDim2.new(1, 0, 1, 0)
+	healthBar.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+	healthBar.BorderSizePixel = 0
+	healthBar.Parent = healthBg
+
+	billboard.Parent = espFolder
+	espCache[player] = billboard
 end
 
--- Função para remover o ESP quando o jogador sair
 local function removeESP(player)
 	if espCache[player] then
-		for _, drawing in pairs(espCache[player]) do
-			drawing:Remove()
-		end
+		espCache[player]:Destroy()
 		espCache[player] = nil
 	end
 end
 
--- Inicializar para jogadores já presentes (ignorando a si mesmo)
 for _, player in ipairs(Players:GetPlayers()) do
 	if player ~= LocalPlayer then
 		createESP(player)
@@ -82,98 +107,57 @@ end)
 
 Players.PlayerRemoving:Connect(removeESP)
 
--- Sistema de ativação/desativação pela tecla
+-- Função para atualizar o estado do ESP via Tecla
+local function setESPState(state)
+	espEnabled = state
+	for _, billboard in pairs(espCache) do
+		billboard.Enabled = espEnabled
+	end
+end
+
+-- Sistema de ativação por Tecla (=) com debounce
+local lastToggle = 0
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
-	if not gameProcessed and input.KeyCode == TOGGLE_KEY then
-		espEnabled = not espEnabled
-		if not espEnabled then
-			for _, espData in pairs(espCache) do
-				espData.Box.Visible = false
-				espData.NameText.Visible = false
-				espData.HealthBarBg.Visible = false
-				espData.HealthBar.Visible = false
-			end
+	if input.KeyCode == TOGGLE_KEY then
+		if tick() - lastToggle > 0.3 then
+			lastToggle = tick()
+			setESPState(not espEnabled)
 		end
 	end
 end)
 
--- Loop principal de renderização do ESP
+-- Loop principal de renderização e atualização dinâmica da vida
 RunService.RenderStepped:Connect(function()
 	if not espEnabled then return end
 
-	for player, espData in pairs(espCache) do
-		-- Bloqueio absoluto para nunca renderizar no próprio jogador
+	for player, billboard in pairs(espCache) do
 		if player ~= LocalPlayer then
 			local character = player.Character
-			local humanoidRootPart = character and character:FindFirstChild("HumanoidRootPart")
-			local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 			local head = character and character:FindFirstChild("Head")
+			local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 
-			if character and humanoidRootPart and head and humanoid and humanoid.Health > 0 then
-				local headPos, headOnScreen = Camera:WorldToViewportPoint(head.Position + Vector3.new(0, 0.5, 0))
-				local rootPos, onScreen = Camera:WorldToViewportPoint(humanoidRootPart.Position)
+			if head and humanoid and humanoid.Health > 0 then
+				billboard.Adornee = head
+				billboard.Enabled = true
 
-				if onScreen or headOnScreen then
-					local legPosition = Camera:WorldToViewportPoint(humanoidRootPart.Position - Vector3.new(0, 3.2, 0))
-					
-					-- Altura e largura com o ajuste de tamanho proporcional
-					local height = math.abs(headPos.Y - legPosition.Y) * 1.15
-					local width = (height / 2) * 1.15
-
-					local boxPosition = Vector2.new(headPos.X - width / 2, headPos.Y)
-
-					-- Atualizar Box Roxo
-					local box = espData.Box
-					box.Size = Vector2.new(width, height)
-					box.Position = boxPosition
-					box.Visible = true
-
-					-- Configurações da Barra de Vida (Descolada da borda do box)
-					local barWidth = width
-					local barHeight = 4
-					local barX = boxPosition.X
-					local barY = boxPosition.Y - 8
-
-					-- Fundo da barra
-					local healthBarBg = espData.HealthBarBg
-					healthBarBg.Size = Vector2.new(barWidth, barHeight)
-					healthBarBg.Position = Vector2.new(barX, barY)
-					healthBarBg.Visible = true
-
-					-- Porcentagem de vida atual
+				-- Atualizar tamanho e cor da barra de vida dinamicamente
+				local healthBg = billboard:FindFirstChild("HealthBg")
+				local healthBar = healthBg and healthBg:FindFirstChild("HealthBar")
+				
+				if healthBar then
 					local healthPercent = math.clamp(humanoid.Health / humanoid.MaxHealth, 0, 1)
-					local currentBarWidth = barWidth * healthPercent
+					healthBar.Size = UDim2.new(healthPercent, 0, 1, 0)
 
-					-- Definir cor da barra com base na vida (Verde -> Amarelo -> Vermelho)
-					local healthBar = espData.HealthBar
-					healthBar.Size = Vector2.new(currentBarWidth, barHeight - 1)
-					healthBar.Position = Vector2.new(barX, barY)
-					
 					if healthPercent > 0.6 then
-						healthBar.Color = Color3.fromRGB(0, 255, 0) -- Verde
+						healthBar.BackgroundColor3 = Color3.fromRGB(0, 255, 0) -- Verde
 					elseif healthPercent > 0.3 then
-						healthBar.Color = Color3.fromRGB(255, 255, 0) -- Amarelo
+						healthBar.BackgroundColor3 = Color3.fromRGB(255, 255, 0) -- Amarelo
 					else
-						healthBar.Color = Color3.fromRGB(255, 0, 0) -- Vermelho
+						healthBar.BackgroundColor3 = Color3.fromRGB(255, 0, 0) -- Vermelho
 					end
-					healthBar.Visible = true
-
-					-- Atualizar Nick (Mais para cima, logo acima da barra de vida)
-					local nameText = espData.NameText
-					nameText.Text = player.Name
-					nameText.Position = Vector2.new(boxPosition.X + (width / 2), barY - 18)
-					nameText.Visible = true
-				else
-					espData.Box.Visible = false
-					espData.NameText.Visible = false
-					espData.HealthBarBg.Visible = false
-					espData.HealthBar.Visible = false
 				end
 			else
-				espData.Box.Visible = false
-				espData.NameText.Visible = false
-				espData.HealthBarBg.Visible = false
-				espData.HealthBar.Visible = false
+				billboard.Enabled = false
 			end
 		end
 	end
